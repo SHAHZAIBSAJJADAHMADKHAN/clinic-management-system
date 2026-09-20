@@ -657,7 +657,7 @@ class ClinicService:
                     "type": "recovery",
                     "email": data.email,
                     "redirect_to": (
-                        "http://localhost:5173/set-password"
+                        f"{self.db.settings.frontend_origin.rstrip('/')}/set-password"
                     ),
                 },
             )
