@@ -1,0 +1,1 @@
+export function AuthShell({ children, title = 'Welcome to ClinicCare' }) { return <main className="auth-shell"><section><a className="brand" href="/">ClinicCare</a><p className="eyebrow">Connected clinical care</p><h1>{title}</h1>{children}</section><aside aria-hidden="true">Secure, calm, and built around better care.</aside></main> }

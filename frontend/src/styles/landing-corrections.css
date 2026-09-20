@@ -1,0 +1,234 @@
+/* Targeted approved-reference corrections. This file intentionally overrides
+   only landing-page presentation without touching application behavior. */
+.hero-doctors {
+  opacity: .58;
+}
+
+.hero-doctor-pair {
+  position: absolute;
+  z-index: 1;
+  left: 31%;
+  bottom: 126px;
+  width: min(35vw, 540px);
+  max-height: 640px;
+  object-fit: contain;
+  mix-blend-mode: screen;
+  filter: drop-shadow(0 18px 26px #001230a8);
+  transform: translate3d(calc(var(--px) * .35), calc(var(--py) * .25), 0);
+  transition: transform .45s ease;
+  pointer-events: none;
+}
+
+.landing-hero::after {
+  background: linear-gradient(90deg, #021636f4 0%, #031a3fd4 31%, #0328644a 60%, #01152e08 100%);
+}
+
+.anatomy-stage img {
+  height: 100%;
+  max-height: 100%;
+  max-width: 150%;
+  filter: contrast(1.05) saturate(1.05) drop-shadow(0 0 18px #17cfff);
+}
+
+.anatomy-panel {
+  width: min(40vw, 670px);
+  height: 650px;
+  grid-template-columns: 82px minmax(0, 1fr) 116px;
+  grid-template-rows: auto 1fr auto;
+  gap: 12px;
+}
+
+.anatomy-panel header,
+.anatomy-panel footer {
+  grid-column: 1 / 4;
+}
+
+.anatomy-callouts {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  align-content: space-around;
+  gap: 10px;
+  padding: 2px 0;
+}
+
+.anatomy-callout {
+  position: relative;
+  width: 68px;
+  height: 68px;
+  padding: 0;
+  border: 1px solid #29e9ff;
+  border-radius: 50%;
+  overflow: visible;
+  background: #021a3d;
+  box-shadow: 0 0 14px #1ee5ff55;
+  cursor: pointer;
+  transition: border-color .2s ease, box-shadow .2s ease, transform .2s ease;
+}
+
+.anatomy-callout::after {
+  position: absolute;
+  z-index: -1;
+  top: 50%;
+  left: calc(100% - 2px);
+  width: clamp(48px, 5vw, 90px);
+  border-top: 1px solid #99f6ffb0;
+  box-shadow: 0 0 8px #43eaff8a;
+  content: '';
+}
+
+.anatomy-callout:nth-child(1)::after { transform: rotate(2deg); }
+.anatomy-callout:nth-child(2)::after { transform: rotate(-4deg); }
+.anatomy-callout:nth-child(3)::after { transform: rotate(5deg); }
+.anatomy-callout:nth-child(4)::after { transform: rotate(-5deg); }
+.anatomy-callout:nth-child(5)::after { transform: rotate(4deg); }
+
+.anatomy-callout:hover,
+.anatomy-callout.is-selected {
+  border-color: #d9fdff;
+  box-shadow: 0 0 0 3px #19dfff2e, 0 0 22px #1feeff;
+  transform: scale(1.05);
+}
+
+.callout-thumbnail {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background-color: #021432;
+  background-repeat: no-repeat;
+  background-size: 235px auto;
+}
+
+.callout-thumbnail--brain { background-position: 50% 0%; }
+.callout-thumbnail--heart { background-position: 50% 27%; }
+.callout-thumbnail--lungs { background-position: 50% 21%; }
+.callout-thumbnail--kidneys { background-position: 50% 43%; }
+.callout-thumbnail--stomach { background-position: 50% 35%; }
+
+.anatomy-stage {
+  z-index: 1;
+}
+
+.organ-controls {
+  z-index: 2;
+}
+
+.anatomy-stage .organ-pulse {
+  left: var(--focus-left);
+  top: var(--focus-top);
+  width: 42px;
+  height: 42px;
+  opacity: 1;
+  background: #28e8ff22;
+  border: 1px solid #5ef3ff;
+  box-shadow: 0 0 0 8px #32e7ff1c, 0 0 28px #25dfff;
+  transform: translate(-50%, -50%);
+  transition: left .35s ease, top .35s ease, background .25s ease;
+}
+
+.anatomy-stage .organ-pulse.is-active {
+  animation: none;
+}
+
+.anatomy-stage .organ-pulse.is-heart {
+  background: #ff365f55;
+  border-color: #ff98a8;
+  box-shadow: 0 0 0 8px #ff315522, 0 0 30px #ff3161;
+  animation: heartbeat 1.05s infinite;
+}
+
+.landing-nav-actions .nav-book {
+  flex-shrink: 0;
+  white-space: nowrap;
+  padding: 13px 25px;
+  font-size: 14px;
+  background: linear-gradient(100deg, #20f5ff, #13c7ff);
+  color: #001a40 !important;
+  box-shadow: 0 0 30px #18dcfa85, inset 0 1px 0 #fff8;
+}
+
+.doctor-photo {
+  display: block;
+  width: 100%;
+  height: 198px;
+  object-fit: cover;
+  object-position: center top;
+  background: #dcecff;
+}
+
+.final-cta > img {
+  object-position: right center;
+}
+
+.final-cta::after {
+  background: linear-gradient(90deg, #031940fa 0%, #052554eb 38%, #041e4865 65%, #041b4112);
+}
+
+@media (max-width: 1100px) {
+  .anatomy-panel {
+    width: 43vw;
+  }
+}
+
+@media (max-width: 820px) {
+  .anatomy-panel {
+    width: 100%;
+    height: 560px;
+    grid-template-columns: 74px minmax(0, 1fr) 92px;
+  }
+
+  .anatomy-callout {
+    width: 58px;
+    height: 58px;
+  }
+
+  .anatomy-callout::after {
+    width: 46px;
+  }
+
+  .hero-doctor-pair {
+    position: relative;
+    left: auto;
+    bottom: auto;
+    display: block;
+    width: min(68vw, 480px);
+    margin: 0 auto -20px;
+  }
+}
+
+@media (max-width: 560px) {
+  .anatomy-panel {
+    height: 510px;
+    grid-template-columns: 56px minmax(0, 1fr) 78px;
+    gap: 8px;
+  }
+
+  .anatomy-callout {
+    width: 48px;
+    height: 48px;
+  }
+
+  .anatomy-callout::after {
+    width: 32px;
+  }
+
+  .callout-thumbnail {
+    background-size: 180px auto;
+  }
+
+  .hero-doctor-pair {
+    width: 88vw;
+    margin-top: -15px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-doctor-pair {
+    transition: none !important;
+  }
+
+  .anatomy-stage .organ-pulse.is-heart {
+    animation: none;
+  }
+}

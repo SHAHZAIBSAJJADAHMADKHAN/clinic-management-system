@@ -1,0 +1,319 @@
+{
+  "name": "Clinic Email Dispatcher",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 5
+            }
+          ]
+        }
+      },
+      "id": "a9f9d896-7d6b-4e5b-83c8-001000000001",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 300]
+    },
+    {
+      "parameters": {},
+      "id": "a9f9d896-7d6b-4e5b-83c8-001000000002",
+      "name": "Manual Test Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [0, 460]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.N8N_OUTBOX_SUPABASE_URL + '/rest/v1/automation_events?select=id,event_type,aggregate_type,aggregate_id,recipient_profile_id,recipient_email,payload,status,attempt_count,available_at,deduplication_key&status=in.(pending,failed)&available_at=lte.' + encodeURIComponent($now.toISO()) + '&order=available_at.asc&limit=10' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{ $env.N8N_OUTBOX_SUPABASE_SERVICE_ROLE_KEY }}" },
+            { "name": "Authorization", "value": "={{ 'Bearer ' + $env.N8N_OUTBOX_SUPABASE_SERVICE_ROLE_KEY }}" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a9f9d896-7d6b-4e5b-83c8-001000000003",
+      "name": "Fetch Due Events",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [240, 380]
+    },
+    {
+      "parameters": {
+        "jsCode": "const source = $input.all();\nconst events = source.length === 1 && Array.isArray(source[0].json)\n  ? source[0].json\n  : source.map((item) => item.json);\nreturn events.map((event) => ({ json: { event } }));"
+      },
+      "id": "a9f9d896-7d6b-4e5b-83c8-001000000004",
+      "name": "Split Due Events",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 380]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $env.N8N_OUTBOX_SUPABASE_URL + '/rest/v1/automation_events?id=eq.' + $json.event.id + '&status=in.(pending,failed)&available_at=lte.' + encodeURIComponent($now.toISO()) }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{ $env.N8N_OUTBOX_SUPABASE_SERVICE_ROLE_KEY }}" },
+            { "name": "Authorization", "value": "={{ 'Bearer ' + $env.N8N_OUTBOX_SUPABASE_SERVICE_ROLE_KEY }}" },
+            { "name": "Prefer", "value": "return=representation" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ status: 'processing', attempt_count: $json.event.attempt_count + 1 }) }}",
+        "options": {}
+      },
+      "id": "a9f9d896-7d6b-4e5b-83c8-001000000005",
+      "name": "Claim Event Conditionally",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [720, 380]
+    },
+    {
+      "parameters": {
+        "jsCode": "const claimed = Array.isArray($json) ? $json[0] : $json;\n// A zero-row conditional update means another worker won the claim.\nreturn claimed?.id ? [{ json: claimed }] : [];"
+      },
+      "id": "a9f9d896-7d6b-4e5b-83c8-001000000006",
+      "name": "Keep Claimed Event Only",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [960, 380]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.N8N_OUTBOX_SUPABASE_URL + '/rest/v1/profiles?id=eq.' + $json.recipient_profile_id + '&select=full_name,email&limit=1' }}",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [
+          { "name": "apikey", "value": "={{ $env.N8N_OUTBOX_SUPABASE_SERVICE_ROLE_KEY }}" },
+          { "name": "Authorization", "value": "={{ 'Bearer ' + $env.N8N_OUTBOX_SUPABASE_SERVICE_ROLE_KEY }}" }
+        ] },
+        "options": {}
+      },
+      "id": "a9f9d896-7d6b-4e5b-83c8-001000000007",
+      "name": "Fetch Recipient Context",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1200, 380]
+    },
+    {
+      "parameters": {
+        "jsCode": "const event = $('Keep Claimed Event Only').item.json;\nconst response = $json;\nconst profile = Array.isArray(response) ? response[0] : response;\nconst recipientEmail = event.recipient_email || profile?.email;\nif (!recipientEmail) throw new Error('Claimed event has no deliverable recipient email');\nreturn [{ json: { event, recipient: { full_name: profile?.full_name || 'Patient', email: recipientEmail } } }];"
+      },
+      "id": "a9f9d896-7d6b-4e5b-83c8-001000000008",
+      "name": "Build Recipient Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1440, 380]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            { "conditions": { "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" }, "conditions": [{ "leftValue": "={{ $json.event.event_type }}", "rightValue": "doctor_invitation", "operator": { "type": "string", "operation": "equals" } }] }, "renameOutput": true, "outputKey": "doctor_invitation" },
+            { "conditions": { "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" }, "conditions": [{ "leftValue": "={{ $json.event.event_type }}", "rightValue": "appointment_confirmed", "operator": { "type": "string", "operation": "equals" } }] }, "renameOutput": true, "outputKey": "appointment_confirmed" },
+            { "conditions": { "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" }, "conditions": [{ "leftValue": "={{ $json.event.event_type }}", "rightValue": "appointment_rejected", "operator": { "type": "string", "operation": "equals" } }] }, "renameOutput": true, "outputKey": "appointment_rejected" },
+            { "conditions": { "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" }, "conditions": [{ "leftValue": "={{ $json.event.event_type }}", "rightValue": "appointment_cancelled", "operator": { "type": "string", "operation": "equals" } }] }, "renameOutput": true, "outputKey": "appointment_cancelled" },
+            { "conditions": { "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" }, "conditions": [{ "leftValue": "={{ $json.event.event_type }}", "rightValue": "appointment_cancelled_leave", "operator": { "type": "string", "operation": "equals" } }] }, "renameOutput": true, "outputKey": "appointment_cancelled_leave" },
+            { "conditions": { "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" }, "conditions": [{ "leftValue": "={{ $json.event.event_type }}", "rightValue": "appointment_reminder", "operator": { "type": "string", "operation": "equals" } }] }, "renameOutput": true, "outputKey": "appointment_reminder" },
+            { "conditions": { "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" }, "conditions": [{ "leftValue": "={{ $json.event.event_type }}", "rightValue": "appointment_pending_expired", "operator": { "type": "string", "operation": "equals" } }] }, "renameOutput": true, "outputKey": "appointment_pending_expired" }
+          ]
+        },
+        "options": { "fallbackOutput": "extra" }
+      },
+      "id": "a9f9d896-7d6b-4e5b-83c8-001000000009",
+      "name": "Route Supported Event Type",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [1680, 380]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.N8N_OUTBOX_SUPABASE_URL + '/rest/v1/doctors?id=eq.' + $json.event.aggregate_id + '&select=id,specialty,profiles(full_name)&limit=1' }}",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [
+          { "name": "apikey", "value": "={{ $env.N8N_OUTBOX_SUPABASE_SERVICE_ROLE_KEY }}" },
+          { "name": "Authorization", "value": "={{ 'Bearer ' + $env.N8N_OUTBOX_SUPABASE_SERVICE_ROLE_KEY }}" }
+        ] },
+        "options": {}
+      },
+      "id": "a9f9d896-7d6b-4e5b-83c8-001000000010",
+      "name": "Fetch Invitation Doctor Context",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1920, 120]
+    },
+    {
+      "parameters": {
+        "jsCode": "const context = $('Build Recipient Context').item.json;\nconst row = Array.isArray($json) ? $json[0] : $json;\nconst doctorName = row?.profiles?.full_name || context.recipient.full_name;\nconst setupAction = context.event.payload?.setup_url ? `\\n\\nComplete account setup: ${context.event.payload.setup_url}` : '\\n\\nPlease contact Nowshera Family Clinic to complete account setup.';\nreturn [{ json: { ...context, event_id: context.event.id, email_subject: 'Welcome to Nowshera Family Clinic', email_text: `Dear Dr. ${doctorName},\\n\\nWelcome to Nowshera Family Clinic. Your doctor account has been created.${setupAction}\\n\\nRegards,\\nNowshera Family Clinic` } }];"
+      },
+      "id": "a9f9d896-7d6b-4e5b-83c8-001000000011",
+      "name": "Build Doctor Invitation Email",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2160, 120]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.N8N_OUTBOX_SUPABASE_URL + '/rest/v1/appointments?id=eq.' + $json.event.aggregate_id + '&select=id,start_at,end_at,status,rejection_reason,cancellation_reason,doctors(specialty,profiles(full_name))&limit=1' }}",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [
+          { "name": "apikey", "value": "={{ $env.N8N_OUTBOX_SUPABASE_SERVICE_ROLE_KEY }}" },
+          { "name": "Authorization", "value": "={{ 'Bearer ' + $env.N8N_OUTBOX_SUPABASE_SERVICE_ROLE_KEY }}" }
+        ] },
+        "options": {}
+      },
+      "id": "a9f9d896-7d6b-4e5b-83c8-001000000012",
+      "name": "Fetch Appointment Context",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1920, 540]
+    },
+    {
+      "parameters": {
+        "jsCode": "const context = $('Build Recipient Context').item.json;\nconst appointment = Array.isArray($json) ? $json[0] : $json;\nif (!appointment?.id) throw new Error('Appointment context is unavailable');\nconst zone = $env.N8N_CLINIC_TIMEZONE || 'Asia/Karachi';\nconst instant = new Date(appointment.start_at);\nconst date = new Intl.DateTimeFormat('en-GB', { timeZone: zone, weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(instant);\nconst time = new Intl.DateTimeFormat('en-US', { timeZone: zone, hour: 'numeric', minute: '2-digit', hour12: true }).format(instant).toLowerCase();\nconst when = `${date} at ${time}`;\nconst doctorName = appointment.doctors?.profiles?.full_name || 'your doctor';\nconst type = context.event.event_type;\nconst reason = type === 'appointment_rejected' ? appointment.rejection_reason : appointment.cancellation_reason;\nconst messages = {\n  appointment_confirmed: ['Appointment Confirmed — Nowshera Family Clinic', `Your appointment is confirmed.`],\n  appointment_rejected: ['Appointment Request Update — Nowshera Family Clinic', 'Your appointment request was not accepted.'],\n  appointment_cancelled: ['Appointment Cancelled — Nowshera Family Clinic', 'Your appointment has been cancelled.'],\n  appointment_cancelled_leave: ['Appointment Cancelled — Nowshera Family Clinic', 'Your appointment has been cancelled because the doctor is unavailable.'],\n  appointment_reminder: ['Appointment Reminder — Nowshera Family Clinic', 'This is a reminder about your upcoming appointment.'],\n  appointment_pending_expired: ['Appointment Cancelled — Nowshera Family Clinic', 'Your pending appointment has expired and been cancelled.']\n};\nconst [email_subject, intro] = messages[type];\nconst reasonLine = reason ? `\\nReason: ${reason}` : '';\nreturn [{ json: { ...context, appointment, event_id: context.event.id, email_subject, email_text: `Dear ${context.recipient.full_name},\\n\\n${intro}\\n\\nDoctor: Dr. ${doctorName}\\nWhen: ${when}\\nStatus: ${appointment.status}${reasonLine}\\n\\nRegards,\\nNowshera Family Clinic` } }];"
+      },
+      "id": "a9f9d896-7d6b-4e5b-83c8-001000000013",
+      "name": "Build Appointment Email",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2160, 540]
+    },
+    {
+      "parameters": {
+        "jsCode": "const event = $json.event;\nconst retryAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();\nreturn [{ json: { event, available_at: retryAt, failure_reason: 'Unsupported event type; no email sent' } }];"
+      },
+      "id": "a9f9d896-7d6b-4e5b-83c8-001000000014",
+      "name": "Quarantine Unsupported Event",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1920, 850]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $env.N8N_EMAIL_FROM }}",
+        "toEmail": "={{ $json.recipient.email }}",
+        "subject": "={{ $json.email_subject }}",
+        "emailFormat": "text",
+        "text": "={{ $json.email_text }}",
+        "options": {}
+      },
+      "id": "a9f9d896-7d6b-4e5b-83c8-001000000015",
+      "name": "Send Transactional Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [2400, 420],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": { "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" }, "conditions": [{ "leftValue": "={{ !$json.error }}", "rightValue": true, "operator": { "type": "boolean", "operation": "true", "singleValue": true } }] }
+      },
+      "id": "a9f9d896-7d6b-4e5b-83c8-001000000016",
+      "name": "Email Send Succeeded",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [2640, 420]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $env.N8N_OUTBOX_SUPABASE_URL + '/rest/v1/automation_events?id=eq.' + $json.event.id + '&status=eq.processing' }}",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [
+          { "name": "apikey", "value": "={{ $env.N8N_OUTBOX_SUPABASE_SERVICE_ROLE_KEY }}" },
+          { "name": "Authorization", "value": "={{ 'Bearer ' + $env.N8N_OUTBOX_SUPABASE_SERVICE_ROLE_KEY }}" }
+        ] },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ status: 'processed', processed_at: $now.toISO() }) }}",
+        "options": {}
+      },
+      "id": "a9f9d896-7d6b-4e5b-83c8-001000000017",
+      "name": "Mark Event Processed",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2880, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const event = $json.event;\nconst attempt = Number(event.attempt_count || 1);\nconst maxAttempts = Math.max(1, Number($env.N8N_OUTBOX_MAX_ATTEMPTS || 5));\nconst minutes = attempt >= maxAttempts ? 1440 : [5, 15, 60, 240, 1440][Math.min(attempt - 1, 4)];\nreturn [{ json: { event, available_at: new Date(Date.now() + minutes * 60000).toISOString() } }];"
+      },
+      "id": "a9f9d896-7d6b-4e5b-83c8-001000000018",
+      "name": "Build Bounded Retry",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2880, 560]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $env.N8N_OUTBOX_SUPABASE_URL + '/rest/v1/automation_events?id=eq.' + $json.event.id + '&status=eq.processing' }}",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [
+          { "name": "apikey", "value": "={{ $env.N8N_OUTBOX_SUPABASE_SERVICE_ROLE_KEY }}" },
+          { "name": "Authorization", "value": "={{ 'Bearer ' + $env.N8N_OUTBOX_SUPABASE_SERVICE_ROLE_KEY }}" }
+        ] },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ status: 'failed', available_at: $json.available_at }) }}",
+        "options": {}
+      },
+      "id": "a9f9d896-7d6b-4e5b-83c8-001000000019",
+      "name": "Mark Event Failed For Retry",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [3120, 560]
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": { "main": [[{ "node": "Fetch Due Events", "type": "main", "index": 0 }]] },
+    "Manual Test Trigger": { "main": [[{ "node": "Fetch Due Events", "type": "main", "index": 0 }]] },
+    "Fetch Due Events": { "main": [[{ "node": "Split Due Events", "type": "main", "index": 0 }]] },
+    "Split Due Events": { "main": [[{ "node": "Claim Event Conditionally", "type": "main", "index": 0 }]] },
+    "Claim Event Conditionally": { "main": [[{ "node": "Keep Claimed Event Only", "type": "main", "index": 0 }]] },
+    "Keep Claimed Event Only": { "main": [[{ "node": "Fetch Recipient Context", "type": "main", "index": 0 }]] },
+    "Fetch Recipient Context": { "main": [[{ "node": "Build Recipient Context", "type": "main", "index": 0 }]] },
+    "Build Recipient Context": { "main": [[{ "node": "Route Supported Event Type", "type": "main", "index": 0 }]] },
+    "Route Supported Event Type": { "main": [
+      [{ "node": "Fetch Invitation Doctor Context", "type": "main", "index": 0 }],
+      [{ "node": "Fetch Appointment Context", "type": "main", "index": 0 }],
+      [{ "node": "Fetch Appointment Context", "type": "main", "index": 0 }],
+      [{ "node": "Fetch Appointment Context", "type": "main", "index": 0 }],
+      [{ "node": "Fetch Appointment Context", "type": "main", "index": 0 }],
+      [{ "node": "Fetch Appointment Context", "type": "main", "index": 0 }],
+      [{ "node": "Fetch Appointment Context", "type": "main", "index": 0 }],
+      [{ "node": "Quarantine Unsupported Event", "type": "main", "index": 0 }]
+    ] },
+    "Fetch Invitation Doctor Context": { "main": [[{ "node": "Build Doctor Invitation Email", "type": "main", "index": 0 }]] },
+    "Build Doctor Invitation Email": { "main": [[{ "node": "Send Transactional Email", "type": "main", "index": 0 }]] },
+    "Fetch Appointment Context": { "main": [[{ "node": "Build Appointment Email", "type": "main", "index": 0 }]] },
+    "Build Appointment Email": { "main": [[{ "node": "Send Transactional Email", "type": "main", "index": 0 }]] },
+    "Send Transactional Email": { "main": [[{ "node": "Email Send Succeeded", "type": "main", "index": 0 }]] },
+    "Email Send Succeeded": { "main": [
+      [{ "node": "Mark Event Processed", "type": "main", "index": 0 }],
+      [{ "node": "Build Bounded Retry", "type": "main", "index": 0 }]
+    ] },
+    "Build Bounded Retry": { "main": [[{ "node": "Mark Event Failed For Retry", "type": "main", "index": 0 }]] },
+    "Quarantine Unsupported Event": { "main": [[{ "node": "Mark Event Failed For Retry", "type": "main", "index": 0 }]] }
+  },
+  "pinData": {},
+  "meta": { "templateCredsSetupCompleted": false },
+  "settings": { "executionOrder": "v1" },
+  "active": false,
+  "tags": []
+}
